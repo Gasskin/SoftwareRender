@@ -9,6 +9,10 @@ private:
 	std::vector<Vec3f> verts_;
 	std::vector<std::vector<int> > faces_;
 public:
+	float minX=100.;
+	float minY=100.;
+	float maxX = 0.;
+	float maxY = 0.;
 	Model(const char *filename);
 	~Model();
 	int nverts();

@@ -1,11 +1,18 @@
 ﻿#include "tgaimage.h"
+#include "model.h"
+
 #include <windows.h>
 #include <iostream>
 
+
 const TGAColor white = TGAColor(255, 255, 255, 255);
 const TGAColor red   = TGAColor(255, 0,   0,   255);
+const int width = 1000;
+const int height = 1000;
 
-
+/// <summary>
+/// 绘制直线
+/// </summary>
 void line(int x0, int y0, int x1, int y1, TGAImage& image, TGAColor color)
 {
     bool steep = false;
@@ -49,27 +56,44 @@ void line(int x0, int y0, int x1, int y1, TGAImage& image, TGAColor color)
 }
 
 int main(int argc, char** argv) {
-    TGAImage image(100, 100, TGAImage::RGB);
 
-    __int64 frequency;
-    QueryPerformanceFrequency((LARGE_INTEGER*)&frequency);
+    TGAImage image(width, height, TGAImage::RGB);
+    Model* model = new Model("obj/cmdr.obj");
 
-    __int64 time1,time2;
-    QueryPerformanceCounter((LARGE_INTEGER*)&time1);
-
-    //================== 主代码区 ======================
-
-    for (int i = 0; i < 1000000; i++)
+    for (int i = 0; i < model->nfaces(); i++)
     {
-        line(13, 20, 80, 40, image, white);
-        //line(20, 13, 40, 80, image, red);
-        //line(80, 40, 13, 20, image, red);
+        std::vector<int> face = model->face(i);
+
+        float xscale = model->maxX - model->minX;
+        float yscale = model->maxY - model->minY;
+
+        float scale = xscale > yscale ? xscale : yscale;
+
+        float movex = 0;
+        float movey = 0;
+        if (xscale > yscale)
+        {
+            movey = height * 0.5 - yscale / scale * height * 0.5;
+        }
+        else
+        {
+            movex = width * 0.5 - xscale / scale * width * 0.5;
+        }
+
+        for (int j = 0; j < 3; j++)
+        {
+            Vec3f v0 = model->vert(face[j]);
+            Vec3f v1 = model->vert(face[(j + 1) % 3]);
+            
+            int x0 = (v0.x - model->minX) / scale * width + movex;
+            int y0 = (v0.y - model->minY) / scale * height + movey;
+            int x1 = (v1.x - model->minX) / scale * width + movex;
+            int y1 = (v1.y - model->minY) / scale * height + movey;
+
+            line(x0, y0, x1, y1, image, white);
+        }
     }
-
-    //=================================================
-    QueryPerformanceCounter((LARGE_INTEGER*)&time2);
-    std::cout << (double)(time2 - time1) / frequency << std::endl;
-
+    image.flip_vertically();
     image.write_tga_file("output.tga");
     return 0;
 }
