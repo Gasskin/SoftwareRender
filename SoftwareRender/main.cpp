@@ -24,8 +24,10 @@ void line(int x0, int y0, int x1, int y1, TGAImage& image, TGAColor color)
     }
     int dx = x1 - x0;
     int dy = y1 - y0;
-    int derror2 = std::abs(dy) * 2;
-    int error2 = 0;
+    // 这里本身是 dy/dx，二下面的if里是 error>0.5
+    // 同时乘以 2dx ，可以优化掉所有的除法
+    int derror = std::abs(dy) * 2;
+    int error = 0;
     int y = y0;
     for (int x = x0; x <= x1; x++)
     {
@@ -37,11 +39,11 @@ void line(int x0, int y0, int x1, int y1, TGAImage& image, TGAColor color)
         {
             image.set(x, y, color);
         }
-        error2 += derror2;
-        if (error2 > dx)
+        error += derror;
+        if (error > dx)
         {
             y += (y1 > y0 ? 1 : -1);
-            error2 -= dx * 2;
+            error -= dx * 2;
         }
     }
 }
