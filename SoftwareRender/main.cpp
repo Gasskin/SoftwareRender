@@ -8,8 +8,8 @@
 const TGAColor white = TGAColor(255, 255, 255, 255);
 const TGAColor red = TGAColor(255, 0, 0, 255);
 const TGAColor green = TGAColor(0, 255, 0, 255);
-const int width = 200;
-const int height = 200;
+const int width = 800;
+const int height = 800;
 
 /// <summary>
 /// 绘制直线
@@ -85,24 +85,85 @@ void line(Vec2i p0, Vec2i p1, TGAImage& image, TGAColor color)
     }
 }
 
-void triangle(Vec2i t0, Vec2i t1, Vec2i t2, TGAImage& image, TGAColor color)
+
+Vec3f barycentric(Vec2i* pts, Vec2i P)
 {
-    // 排序 t0 < t1 < t2
+    // 基于右手坐标系
+    // ab x ap , bc x bp , ca x cp
+    // x1y2 - x2y1
+    int res[3] = { 0 };
+    for (int i = 0; i < 3; i++)
+    {
+        Vec2i l1 = pts[(i + 1)%3] - pts[i];
+        Vec2i l2 = P - pts[i];
+        res[i] = l1.x * l2.y - l2.x * l1.y;
+    }
+    return Vec3f(res[0], res[1], res[2]);
+}
+
+void triangle(Vec2i* pts, TGAImage& image, TGAColor color)
+{
+   
+
+    int minX = image.get_width() - 1;
+    int maxX = 0;
+    int minY = image.get_height() - 1;
+    int maxY = 0;
+
+    for (int i = 0; i < 3; i++)
+    {
+        if (pts[i].x < minX)
+        {
+            minX = pts[i].x;
+        }
+        if (pts[i].x > maxX)
+        {
+            maxX = pts[i].x;
+        }
+        if (pts[i].y < minY)
+        {
+            minY = pts[i].y;
+        }
+        if (pts[i].y > maxY)
+        {
+            maxY = pts[i].y;
+        }
+    }
+
+    Vec2i P;
+    for (P.x = minX; P.x <= maxX; P.x++)
+    {
+        for (P.y = minY; P.y <= maxY; P.y++)
+        {
+            Vec3f bc_screen = barycentric(pts, P);
+            if (bc_screen.x < 0 || bc_screen.y < 0 || bc_screen.z < 0)
+            {
+                continue;
+            }
+            image.set(P.x, P.y, color);
+        }
+    }
+}
+
+void triangle2(Vec2i t0, Vec2i t1, Vec2i t2, TGAImage& image, TGAColor color)
+{
+    if (t0.y == t1.y && t0.y == t2.y) return; // i dont care about degenerate triangles
     if (t0.y > t1.y) std::swap(t0, t1);
     if (t0.y > t2.y) std::swap(t0, t2);
     if (t1.y > t2.y) std::swap(t1, t2);
     int total_height = t2.y - t0.y;
-    for (int y = t0.y; y <= t1.y; y++)
+    for (int i = 0; i < total_height; i++)
     {
-        int segment_height = t1.y - t0.y + 1;
-        float alpha = (float)(y - t0.y) / total_height;
-        float beta = (float)(y - t0.y) / segment_height; // be careful with divisions by zero 
+        bool second_half = i > t1.y - t0.y || t1.y == t0.y;
+        int segment_height = second_half ? t2.y - t1.y : t1.y - t0.y;
+        float alpha = (float)i / total_height;
+        float beta = (float)(i - (second_half ? t1.y - t0.y : 0)) / segment_height; // be careful: with above conditions no division by zero here
         Vec2i A = t0 + (t2 - t0) * alpha;
-        Vec2i B = t0 + (t1 - t0) * beta;
+        Vec2i B = second_half ? t1 + (t2 - t1) * beta : t0 + (t1 - t0) * beta;
         if (A.x > B.x) std::swap(A, B);
         for (int j = A.x; j <= B.x; j++)
         {
-            image.set(j, y, color); // attention, due to int casts t0.y+i != A.y 
+            image.set(j, t0.y + i, color); // attention, due to int casts t0.y+i != A.y
         }
     }
 }
@@ -153,14 +214,52 @@ int main01(int argc, char** argv) {
 int main()
 {
     TGAImage image(width, height, TGAImage::RGB);
+    //Model* model = new Model("obj/african_head.obj");
+    //Model* model = new Model("obj/UZI.obj");
+    Model* model = new Model("obj/cmdr.obj");
 
-    Vec2i t0[3] = { Vec2i(10, 70),   Vec2i(50, 160),  Vec2i(70, 80) };
-    Vec2i t1[3] = { Vec2i(180, 50),  Vec2i(150, 1),   Vec2i(70, 180) };
-    Vec2i t2[3] = { Vec2i(180, 150), Vec2i(120, 160), Vec2i(130, 180) };
+    Vec3f light_dir(0, 0, -1);
+    for (int i = 0; i < model->nfaces(); i++)
+    {
+        std::cout << (float)(i + 1) / (float)model->nfaces() * 100. << "%" << std::endl;
 
-    triangle(t0[2], t0[1], t0[0], image, red);
-    triangle(t1[0], t1[1], t1[2], image, green);
-    triangle(t2[0], t2[1], t2[2], image, white);
+        std::vector<int> face = model->face(i);
+
+        float xscale = model->maxX - model->minX;
+        float yscale = model->maxY - model->minY;
+
+        float scale = xscale > yscale ? xscale : yscale;
+
+        float movex = 0;
+        float movey = 0;
+        if (xscale > yscale)
+        {
+            movey = height * 0.5 - yscale / scale * height * 0.5;
+        }
+        else
+        {
+            movex = width * 0.5 - xscale / scale * width * 0.5;
+        }
+
+        Vec2i screen_coords[3];
+        Vec3f world_coords[3];
+
+        for (int j = 0; j < 3; j++)
+        {
+            Vec3f v = model->vert(face[j]);
+            screen_coords[j] = Vec2i((v.x - model->minX) / scale * width + movex, (v.y - model->minY) / scale * height + movey);
+            world_coords[j] = v;
+        }
+
+        Vec3f n = (world_coords[2] - world_coords[0]) ^ (world_coords[1] - world_coords[0]);
+        n.normalize();
+        float intensity = n * light_dir;
+        if (intensity > 0)
+        {
+            triangle(screen_coords, image, TGAColor(intensity * 255, intensity * 255, intensity * 255, 255));
+            //triangle2(screen_coords[0], screen_coords[1], screen_coords[2], image, TGAColor(intensity * 255, intensity * 255, intensity * 255, 255));
+        }
+    }
 
     image.flip_vertically();
     image.write_tga_file("output.tga");
