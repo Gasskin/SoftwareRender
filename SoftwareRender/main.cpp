@@ -85,7 +85,6 @@ void line(Vec2i p0, Vec2i p1, TGAImage& image, TGAColor color)
     }
 }
 
-
 Vec3f barycentric(Vec2i* pts, Vec2i P)
 {
     // 基于右手坐标系
@@ -215,8 +214,8 @@ int main()
 {
     TGAImage image(width, height, TGAImage::RGB);
     //Model* model = new Model("obj/african_head.obj");
-    //Model* model = new Model("obj/UZI.obj");
-    Model* model = new Model("obj/cmdr.obj");
+    Model* model = new Model("obj/UZI.obj");
+    //Model* model = new Model("obj/cmdr.obj");
 
     Vec3f light_dir(0, 0, -1);
     for (int i = 0; i < model->nfaces(); i++)
@@ -260,7 +259,6 @@ int main()
             //triangle2(screen_coords[0], screen_coords[1], screen_coords[2], image, TGAColor(intensity * 255, intensity * 255, intensity * 255, 255));
         }
     }
-
     image.flip_vertically();
     image.write_tga_file("output.tga");
     return 0;
