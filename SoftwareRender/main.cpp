@@ -210,7 +210,7 @@ int main01(int argc, char** argv) {
     return 0;
 }
 
-int main()
+int main02()
 {
     TGAImage image(width, height, TGAImage::RGB);
     //Model* model = new Model("obj/african_head.obj");
@@ -261,5 +261,11 @@ int main()
     }
     image.flip_vertically();
     image.write_tga_file("output.tga");
+    return 0;
+}
+
+int main()
+{
+    TGAImage image(width, height, TGAImage::RGB);
     return 0;
 }
