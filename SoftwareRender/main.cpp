@@ -47,17 +47,30 @@ void line(int x0, int y0, int x1, int y1, TGAImage& image, TGAColor color)
 Vec3f barycentric(Vec3f A, Vec3f B, Vec3f C, Vec3f P)
 {
     Vec3f s[2];
+    // 1 0 光栅化不考虑z值，在二维平面计算，只需要xy
     for (int i = 2; i--; )
-    {
+    {              
+        // 1
+        // s[1].x = C.y - A.y
+        // s[1].y = B.y - A.y
+        // s[1].z = A.y - P.y
+        // 0
+        // s[0].x = C.x - A.x
+        // s[0].y = B.x - A.x
+        // s[0].z = A.x - P.x
         s[i][0] = C[i] - A[i];
         s[i][1] = B[i] - A[i];
         s[i][2] = A[i] - P[i];
     }
+    // ( x1, y1, z1)^(x2, y2, z2) = ( y1z2 - z1y2, z1x2 - x1z2, x1y2 - y1x2)
     Vec3f u = cross(s[0], s[1]);
+    // |u.z| > 0
     if (std::abs(u[2]) > 1e-2)
     {
+        // TODO...
         return Vec3f(1.f - (u.x + u.y) / u.z, u.y / u.z, u.x / u.z);
     }
+    // 等于0说明在边界上，此时可以当作在三角形内，也可以当作在三角形外
     return Vec3f(-1, 1, 1); 
 }
 
@@ -80,9 +93,15 @@ void triangle(Vec3f* pts, float* zbuffer, TGAImage& image, TGAColor color)
         for (P.y = bboxmin.y; P.y <= bboxmax.y; P.y++)
         {
             Vec3f bc_screen = barycentric(pts[0], pts[1], pts[2], P);
-            if (bc_screen.x < 0 || bc_screen.y < 0 || bc_screen.z < 0) continue;
+            if (bc_screen.x < 0 || bc_screen.y < 0 || bc_screen.z < 0)
+            {
+                continue;
+            }
             P.z = 0;
-            for (int i = 0; i < 3; i++) P.z += pts[i][2] * bc_screen[i];
+            for (int i = 0; i < 3; i++)
+            {
+                P.z += pts[i][2] * bc_screen[i];
+            }
             if (zbuffer[int(P.x + P.y * width)] < P.z)
             {
                 zbuffer[int(P.x + P.y * width)] = P.z;
@@ -105,10 +124,9 @@ int main(int argc, char** argv)
     }
     else
     {
-        model = new Model("obj/african_head.obj");
+        // model = new Model("obj/african_head.obj");
+        model = new Model("obj/cmdr.obj");
     }
-
-    
     
     // 初始化zbuffer
     float* zbuffer = new float[width * height];
@@ -127,6 +145,8 @@ int main(int argc, char** argv)
         {
             // 第i面的第j个顶点坐标（x,y,z），一个面有3个顶点
             Vec3f v = model->vert(face[j]);
+            v.x += 10;
+            v.y -= 55;
             pts[j] = world2screen(v);
             world_coords[j] = v;
         }
