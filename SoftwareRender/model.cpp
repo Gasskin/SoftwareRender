@@ -20,24 +20,8 @@ Model::Model(const char* filename) : verts_(), faces_()
         {
             iss >> trash;
             Vec3f v;
-            for (int i = 0; i < 3; i++) iss >> v.raw[i];
+            for (int i = 0; i < 3; i++) iss >> v[i];
             verts_.push_back(v);
-            if (v.x < minX)
-            {
-                minX = v.x;
-            }
-            if (v.x > maxX)
-            {
-                maxX = v.x;
-            }
-            if (v.y < minY)
-            {
-                minY = v.y;
-            }
-            if (v.y > maxY)
-            {
-                maxY = v.y;
-            }
         }
         else if (!line.compare(0, 2, "f "))
         {
@@ -78,4 +62,3 @@ Vec3f Model::vert(int i)
 {
     return verts_[i];
 }
-

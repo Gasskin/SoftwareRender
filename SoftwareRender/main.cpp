@@ -1,79 +1,38 @@
-﻿#include "tgaimage.h"
+﻿#include <vector>
+#include <cmath>
+#include <cstdlib>
+#include <limits>
+#include "tgaimage.h"
 #include "model.h"
-
-#include <windows.h>
-#include <iostream>
-
+#include "geometry.h"
 
 const TGAColor white = TGAColor(255, 255, 255, 255);
 const TGAColor red = TGAColor(255, 0, 0, 255);
-const TGAColor green = TGAColor(0, 255, 0, 255);
+Model* model = NULL;
 const int width = 800;
 const int height = 800;
+// 光照方向
+const Vec3f light_dir(-0.5, -0.5, -0.5);
 
-/// <summary>
-/// 绘制直线
-/// </summary>
 void line(int x0, int y0, int x1, int y1, TGAImage& image, TGAColor color)
 {
     bool steep = false;
-    // 保证x轴是更长的那个轴，比如(0,0)到(1,5)，x轴只变动1，y轴变动5，此时如果依旧按照x轴绘制，则只会有2个点（x++)
     if (std::abs(x0 - x1) < std::abs(y0 - y1))
-    { 
+    {
         std::swap(x0, y0);
         std::swap(x1, y1);
         steep = true;
     }
-    // 确保从小端绘制到大端
     if (x0 > x1)
-    { 
+    {
         std::swap(x0, x1);
         std::swap(y0, y1);
     }
-    int dx = x1 - x0;
-    int dy = y1 - y0;
-    // 这里本身是 dy/dx，二下面的if里是 error>0.5
-    // 同时乘以 2dx ，可以优化掉所有的除法
-    int derror = std::abs(dy) * 2;
-    int error = 0;
-    int y = y0;
+
     for (int x = x0; x <= x1; x++)
     {
-        if (steep)
-        {
-            image.set(y, x, color);
-        }
-        else
-        {
-            image.set(x, y, color);
-        }
-        error += derror;
-        if (error > dx)
-        {
-            y += (y1 > y0 ? 1 : -1);
-            error -= dx * 2;
-        }
-    }
-}
-
-void line(Vec2i p0, Vec2i p1, TGAImage& image, TGAColor color)
-{
-    bool steep = false;
-    if (std::abs(p0.x - p1.x) < std::abs(p0.y - p1.y))
-    {
-        std::swap(p0.x, p0.y);
-        std::swap(p1.x, p1.y);
-        steep = true;
-    }
-    if (p0.x > p1.x)
-    {
-        std::swap(p0, p1);
-    }
-
-    for (int x = p0.x; x <= p1.x; x++)
-    {
-        float t = (x - p0.x) / (float)(p1.x - p0.x);
-        int y = p0.y * (1. - t) + p1.y * t;
+        float t = (x - x0) / (float)(x1 - x0);
+        int y = y0 * (1. - t) + y1 * t;
         if (steep)
         {
             image.set(y, x, color);
@@ -85,67 +44,105 @@ void line(Vec2i p0, Vec2i p1, TGAImage& image, TGAColor color)
     }
 }
 
-Vec3f barycentric(Vec2i* pts, Vec2i P)
+Vec3f barycentric(Vec3f A, Vec3f B, Vec3f C, Vec3f P)
 {
-    // 基于右手坐标系
-    // ab x ap , bc x bp , ca x cp
-    // x1y2 - x2y1
-    int res[3] = { 0 };
-    for (int i = 0; i < 3; i++)
+    Vec3f s[2];
+    for (int i = 2; i--; )
     {
-        Vec2i l1 = pts[(i + 1)%3] - pts[i];
-        Vec2i l2 = P - pts[i];
-        res[i] = l1.x * l2.y - l2.x * l1.y;
+        s[i][0] = C[i] - A[i];
+        s[i][1] = B[i] - A[i];
+        s[i][2] = A[i] - P[i];
     }
-    return Vec3f(res[0], res[1], res[2]);
+    Vec3f u = cross(s[0], s[1]);
+    if (std::abs(u[2]) > 1e-2)
+    {
+        return Vec3f(1.f - (u.x + u.y) / u.z, u.y / u.z, u.x / u.z);
+    }
+    return Vec3f(-1, 1, 1); 
 }
 
-void triangle(Vec2i* pts, TGAImage& image, TGAColor color)
+void triangle(Vec3f* pts, float* zbuffer, TGAImage& image, TGAColor color)
 {
-   
-
-    int minX = image.get_width() - 1;
-    int maxX = 0;
-    int minY = image.get_height() - 1;
-    int maxY = 0;
-
+    Vec2f bboxmin(std::numeric_limits<float>::max(), std::numeric_limits<float>::max());
+    Vec2f bboxmax(-std::numeric_limits<float>::max(), -std::numeric_limits<float>::max());
+    Vec2f clamp(image.get_width() - 1, image.get_height() - 1);
     for (int i = 0; i < 3; i++)
     {
-        if (pts[i].x < minX)
+        for (int j = 0; j < 2; j++)
         {
-            minX = pts[i].x;
-        }
-        if (pts[i].x > maxX)
-        {
-            maxX = pts[i].x;
-        }
-        if (pts[i].y < minY)
-        {
-            minY = pts[i].y;
-        }
-        if (pts[i].y > maxY)
-        {
-            maxY = pts[i].y;
+            bboxmin[j] = std::max(0.f, std::min(bboxmin[j], pts[i][j]));
+            bboxmax[j] = std::min(clamp[j], std::max(bboxmax[j], pts[i][j]));
         }
     }
-
-    Vec2i P;
-    for (P.x = minX; P.x <= maxX; P.x++)
+    Vec3f P;
+    for (P.x = bboxmin.x; P.x <= bboxmax.x; P.x++)
     {
-        for (P.y = minY; P.y <= maxY; P.y++)
+        for (P.y = bboxmin.y; P.y <= bboxmax.y; P.y++)
         {
-            Vec3f bc_screen = barycentric(pts, P);
-            if (bc_screen.x < 0 || bc_screen.y < 0 || bc_screen.z < 0)
+            Vec3f bc_screen = barycentric(pts[0], pts[1], pts[2], P);
+            if (bc_screen.x < 0 || bc_screen.y < 0 || bc_screen.z < 0) continue;
+            P.z = 0;
+            for (int i = 0; i < 3; i++) P.z += pts[i][2] * bc_screen[i];
+            if (zbuffer[int(P.x + P.y * width)] < P.z)
             {
-                continue;
+                zbuffer[int(P.x + P.y * width)] = P.z;
+                image.set(P.x, P.y, color);
             }
-            image.set(P.x, P.y, color);
         }
     }
 }
 
-int main()
+Vec3f world2screen(Vec3f v)
 {
+    return Vec3f(int((v.x + 1.) * width / 2. + .5), int((v.y + 1.) * height / 2. + .5), v.z);
+}
+
+int main(int argc, char** argv)
+{
+    if (2 == argc)
+    {
+        model = new Model(argv[1]);
+    }
+    else
+    {
+        model = new Model("obj/african_head.obj");
+    }
+
+    
+    
+    // 初始化zbuffer
+    float* zbuffer = new float[width * height];
+    for (int i = width * height; i--; zbuffer[i] = -std::numeric_limits<float>::max());
+
     TGAImage image(width, height, TGAImage::RGB);
+    for (int i = 0; i < model->nfaces(); i++)
+    {
+        // 第i面
+        std::vector<int> face = model->face(i);
+        // 屏幕坐标
+        Vec3f pts[3];
+        // 世界坐标
+        Vec3f world_coords[3];
+        for (int j = 0; j < 3; j++)
+        {
+            // 第i面的第j个顶点坐标（x,y,z），一个面有3个顶点
+            Vec3f v = model->vert(face[j]);
+            pts[j] = world2screen(v);
+            world_coords[j] = v;
+        }
+        // 计算三角形面的法线方向
+        Vec3f n = cross(world_coords[2] - world_coords[0], world_coords[1] - world_coords[0]);
+        n.normalize();
+        // 根据法线方向和光照方向计算亮度
+        float intensity = n * light_dir;
+        if (intensity > 0)
+        {
+            triangle(pts, zbuffer, image, TGAColor(intensity * 255, intensity * 255, intensity * 255, 255));
+        }
+    }
+
+    image.flip_vertically(); 
+    image.write_tga_file("output.tga");
+    delete model;
     return 0;
 }
