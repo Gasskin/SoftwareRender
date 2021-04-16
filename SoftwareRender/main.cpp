@@ -59,64 +59,56 @@ void line(Vec2i t0, Vec2i t1,TGAImage& image, TGAColor color)
 	line(t0.x, t0.y, t1.x, t1.y, image, color);
 }
 
-int barycentric(Vec2i* pts, Vec2i P)
+Vec3f barycentric(Vec3f A, Vec3f B, Vec3f C, Vec3f P)
 {
-	int pre = -1;
-	for (int i = 0; i < 3; i++)
+	Vec3f s[2];
+	for (int i = 2; i--; )
 	{
-		// AB = B - A
-		int x1 = pts[(i + 1) % 3][0] - pts[i][0];
-		int y1 = pts[(i + 1) % 3][1] - pts[i][1];
-		// AP = P - A
-		int x2 = P[0] - pts[i][0];
-		int y2 = P[1] - pts[i][1];
-		// x2y1-x1y2
-		int res = (x2 * y1 - x1 * y2);
-		if (pre == -1)
-		{
-			pre = res > 0 ? 1 : 0;
-		}
-		res = res > 0 ? 1 : 0;
-		if (res != pre)
-		{
-			return 0;
-		}
+		s[i][0] = C[i] - A[i];
+		s[i][1] = B[i] - A[i];
+		s[i][2] = A[i] - P[i];
 	}
-	return 1;
+	Vec3f u = cross(s[0], s[1]);
+	if (std::abs(u[2]) > 1e-2) 
+		return Vec3f(1.f - (u.x + u.y) / u.z, u.y / u.z, u.x / u.z);
+	return Vec3f(-1, 1, 1); 
 }
 
-void triangle(Vec2i* pts, TGAImage& image, TGAColor color)
+void triangle(Vec3f* pts, float* zbuffer, TGAImage& image, TGAColor color)
 {
-	// 这里是包围盒的最大最小范围
-	Vec2i bboxmin(image.get_width() - 1, image.get_height() - 1);
-	Vec2i bboxmax(0, 0);
-	// 这个是用来限制我们的范围，总不能比图片本身大小还大吧？
-	Vec2i clamp(image.get_width() - 1, image.get_height() - 1);
-	// 分别对三个顶点遍历
+	Vec2f bboxmin(std::numeric_limits<float>::max(), std::numeric_limits<float>::max());
+	Vec2f bboxmax(-std::numeric_limits<float>::max(), -std::numeric_limits<float>::max());
+	Vec2f clamp(image.get_width() - 1, image.get_height() - 1);
 	for (int i = 0; i < 3; i++)
 	{
-		// 分别对xy遍历
 		for (int j = 0; j < 2; j++)
 		{
-			// 这里嵌套了两层，先比较当前记录的最小和当前顶点，再比较0和最小点
-			bboxmin[j] = std::max(0, std::min(bboxmin[j], pts[i][j]));
+			bboxmin[j] = std::max(0.f, std::min(bboxmin[j], pts[i][j]));
 			bboxmax[j] = std::min(clamp[j], std::max(bboxmax[j], pts[i][j]));
 		}
 	}
-	Vec2i P;
+	Vec3f P;
 	for (P.x = bboxmin.x; P.x <= bboxmax.x; P.x++)
 	{
 		for (P.y = bboxmin.y; P.y <= bboxmax.y; P.y++)
 		{
-			int res = barycentric(pts, P);
-			if (res == 0)
-				continue;
-			image.set(P.x, P.y, color);
+			Vec3f bc_screen = barycentric(pts[0], pts[1], pts[2], P);
+			if (bc_screen.x < 0 || bc_screen.y < 0 || bc_screen.z < 0) continue;
+			P.z = 0;
+			for (int i = 0; i < 3; i++) P.z += pts[i][2] * bc_screen[i];
+			if (zbuffer[int(P.x + P.y * width)] < P.z)
+			{
+				zbuffer[int(P.x + P.y * width)] = P.z;
+				image.set(P.x, P.y, color);
+			}
 		}
 	}
 }
 
-
+Vec3f world2screen(Vec3f v)
+{
+	return Vec3f(int((v.x + 1.) * width / 2. + .5), int((v.y + 1.) * height / 2. + .5), v.z);
+}
 
 int main()
 {
@@ -125,15 +117,18 @@ int main()
 	TGAImage image(width, height, TGAImage::RGB);
 	Vec3f light_dir(0, 0, -1);
 
+	float* zbuffer = new float[width * height];
+	for (int i = width * height; i--; zbuffer[i] = -std::numeric_limits<float>::max());
+
 	for (int i = 0; i < model->nfaces(); i++)
 	{
 		std::vector<int> face = model->face(i);
-		Vec2i screen_coords[3];
+		Vec3f screen_coords[3];
 		Vec3f world_coords[3];
 		for (int j = 0; j < 3; j++)
 		{
 			Vec3f v = model->vert(face[j]);
-			screen_coords[j] = Vec2i((v.x + 1.) * width / 2., (v.y + 1.) * height / 2.);
+			screen_coords[j] = world2screen(v);
 			world_coords[j] = v;
 		}
 		Vec3f n = (world_coords[2] - world_coords[0]) ^ (world_coords[1] - world_coords[0]);
@@ -141,7 +136,7 @@ int main()
 		float intensity = n * light_dir;
 		if (intensity > 0)
 		{
-			triangle(screen_coords, image, TGAColor(intensity * 255, intensity * 255, intensity * 255, 255));
+			triangle(screen_coords, zbuffer,image, TGAColor(intensity * 255, intensity * 255, intensity * 255, 255));
 		}
 	}
 

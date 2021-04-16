@@ -83,6 +83,8 @@ template <class t> std::ostream& operator<<(std::ostream& s, Vec3<t>& v)
 	return s;
 }
 
+Vec3f cross(Vec3f v1, Vec3f v2);
+
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 const int DEFAULT_ALLOC = 4;
